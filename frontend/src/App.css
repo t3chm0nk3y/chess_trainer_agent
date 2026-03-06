@@ -1,0 +1,140 @@
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-card: #1e2a47;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0b0;
+  --accent: #d4a843;
+  --accent-hover: #e6be5a;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --error: #f44336;
+  --inaccuracy: #e6be5a;
+  --mistake: #ff9800;
+  --blunder: #f44336;
+  --best: #4caf50;
+  --good: #8bc34a;
+  --border: #2a3a5e;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 2rem;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.app-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.app-nav a {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.app-nav a:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-card);
+}
+
+.app-nav a.active {
+  color: var(--accent);
+  background-color: var(--bg-card);
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.5rem 2rem;
+}
+
+/* Shared component styles */
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-best { background-color: var(--best); color: #fff; }
+.badge-good { background-color: var(--good); color: #1a1a2e; }
+.badge-inaccuracy { background-color: var(--inaccuracy); color: #1a1a2e; }
+.badge-mistake { background-color: var(--mistake); color: #1a1a2e; }
+.badge-blunder { background-color: var(--blunder); color: #fff; }
+
+.mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-secondary {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+}

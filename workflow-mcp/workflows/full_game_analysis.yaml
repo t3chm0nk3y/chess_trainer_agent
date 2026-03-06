@@ -1,0 +1,59 @@
+name: full_game_analysis
+description: End-to-end analysis of a single game
+trigger: on_import
+version: 1
+
+parameters:
+  - name: game_id
+    type: string
+    required: true
+
+steps:
+  - number: 1
+    tool: database.fetch_game
+    description: Fetch game PGN from database
+    input_map:
+      game_id: "{{ game_id }}"
+
+  - number: 2
+    tool: chessagine.analyze_game
+    description: Analyze each position with engine eval + themes
+    input_map:
+      pgn: "{{ step_1.pgn }}"
+
+  - number: 3
+    tool: classifier.classify_moves
+    description: Classify moves using eval deltas (best/good/inaccuracy/mistake/blunder)
+    input_map:
+      moves: "{{ step_2.evaluations }}"
+
+  - number: 4
+    tool: classifier.detect_phases
+    description: Tag game phases (opening/middlegame/endgame)
+    input_map:
+      moves: "{{ step_3.classified_moves }}"
+
+  - number: 5
+    tool: claude.annotate_mistakes
+    description: Send mistakes to Claude for natural language annotation
+    input_map:
+      pgn: "{{ step_1.pgn }}"
+      mistakes: "{{ step_4.mistakes }}"
+
+  - number: 6
+    tool: database.store_analysis
+    description: Store all results in database
+    input_map:
+      game_id: "{{ game_id }}"
+      moves: "{{ step_5.annotated_moves }}"
+
+  - number: 7
+    tool: database.update_status
+    description: Mark game as analyzed
+    input_map:
+      game_id: "{{ game_id }}"
+      status: analyzed
+
+outputs:
+  - analysis_report
+  - annotated_moves

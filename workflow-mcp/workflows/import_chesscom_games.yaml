@@ -1,0 +1,53 @@
+name: import_chesscom_games
+description: Import games from a Chess.com account
+trigger: manual
+version: 1
+
+parameters:
+  - name: username
+    type: string
+    required: true
+  - name: year
+    type: integer
+    required: false
+  - name: month
+    type: integer
+    required: false
+
+steps:
+  - number: 1
+    tool: chesscom_mcp.get_player_games
+    description: Download monthly game archive from Chess.com (PGN)
+    input_map:
+      username: "{{ username }}"
+      year: "{{ year }}"
+      month: "{{ month }}"
+
+  - number: 2
+    tool: pgn_parser.parse
+    description: Parse PGN into individual games
+    input_map:
+      pgn_text: "{{ step_1.pgn }}"
+
+  - number: 3
+    tool: database.deduplicate
+    description: Deduplicate against existing games
+    input_map:
+      games: "{{ step_2.games }}"
+      source: chesscom
+
+  - number: 4
+    tool: database.store_games
+    description: Store new games with metadata
+    input_map:
+      games: "{{ step_3.new_games }}"
+      source: chesscom
+
+  - number: 5
+    tool: analysis.queue_batch
+    description: Queue each new game for full_game_analysis
+    input_map:
+      game_ids: "{{ step_4.game_ids }}"
+
+outputs:
+  - import_summary
