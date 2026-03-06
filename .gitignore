@@ -43,5 +43,8 @@ frontend/dist/
 # Database
 *.db
 
+# Binaries
+bin/
+
 # Logs
 *.log

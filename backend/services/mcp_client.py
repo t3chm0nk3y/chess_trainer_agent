@@ -1,6 +1,5 @@
 """Unified MCP client for ChessAgine, Lichess, and Chess.com MCPs."""
 
-import json
 import logging
 from dataclasses import dataclass
 

@@ -142,6 +142,110 @@ Respond in JSON format: {{ "patterns": [...] }}"""
         return []
 
 
+CLASSIFY_SYSTEM_PROMPT = """You are an expert chess analyst. Classify chess mistakes as \
+either "tactical" or "strategic". Tactical mistakes involve concrete calculation: missed \
+tactics, hung pieces, failed combinations, missed forks/pins/skewers. Strategic mistakes \
+involve positional judgment: bad pawn structure, poor piece placement, weak square control, \
+choosing the wrong plan. Respond ONLY with valid JSON."""
+
+
+def classify_mistake_type(
+    fen: str,
+    san: str,
+    best_move_uci: str | None,
+    eval_delta: float,
+    phase: str | None,
+) -> str | None:
+    """Classify a mistake as tactical or strategic using Claude (synchronous).
+
+    Returns "tactical" or "strategic", or None on failure.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        return None
+
+    user_prompt = (
+        f"Position (FEN): {fen}\n"
+        f"Move played: {san}\n"
+        f"Best move (UCI): {best_move_uci or 'unknown'}\n"
+        f"Centipawn loss: {eval_delta:.0f}\n"
+        f"Game phase: {phase or 'unknown'}\n\n"
+        "Is this a tactical or strategic mistake? "
+        'Respond with JSON: {"mistake_type": "tactical"} or {"mistake_type": "strategic"}'
+    )
+
+    try:
+        message = client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=64,
+            system=CLASSIFY_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        response_text = message.content[0].text
+        parsed = json.loads(response_text)
+        mistake_type = parsed.get("mistake_type", "").lower()
+        if mistake_type in ("tactical", "strategic"):
+            return mistake_type
+        logger.warning("Unexpected mistake_type from Claude: %s", mistake_type)
+        return None
+    except Exception as e:
+        logger.error("Failed to classify mistake type: %s", e)
+        return None
+
+
+def classify_mistakes_batch(
+    mistakes: list[dict],
+) -> list[str | None]:
+    """Classify multiple mistakes in a single Claude call (synchronous).
+
+    Args:
+        mistakes: List of dicts with keys: fen, san, best_move_uci, eval_delta, phase
+
+    Returns:
+        List of "tactical" | "strategic" | None, one per input mistake.
+    """
+    if not mistakes or not settings.ANTHROPIC_API_KEY:
+        return [None] * len(mistakes)
+
+    entries = []
+    for i, m in enumerate(mistakes):
+        entries.append(
+            f"Mistake {i+1}:\n"
+            f"  FEN: {m['fen']}\n"
+            f"  Move played: {m['san']}\n"
+            f"  Best move: {m.get('best_move_uci', 'unknown')}\n"
+            f"  Centipawn loss: {m['eval_delta']:.0f}\n"
+            f"  Phase: {m.get('phase', 'unknown')}"
+        )
+
+    user_prompt = (
+        "Classify each mistake as tactical or strategic.\n\n"
+        + "\n\n".join(entries)
+        + '\n\nRespond with JSON: {"classifications": ["tactical" or "strategic" for each]}'
+    )
+
+    try:
+        message = client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=256,
+            system=CLASSIFY_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        response_text = message.content[0].text
+        parsed = json.loads(response_text)
+        classifications = parsed.get("classifications", [])
+        results = []
+        for c in classifications:
+            val = c.lower() if isinstance(c, str) else None
+            results.append(val if val in ("tactical", "strategic") else None)
+        # Pad if Claude returned fewer than expected
+        while len(results) < len(mistakes):
+            results.append(None)
+        return results[:len(mistakes)]
+    except Exception as e:
+        logger.error("Failed to batch classify mistake types: %s", e)
+        return [None] * len(mistakes)
+
+
 async def compare_new_game(
     new_game_mistakes: list[dict],
     known_patterns: list[dict],
@@ -171,7 +275,7 @@ Tasks:
 Respond in JSON:
 {{
   "matched_patterns": [{{ "pattern_label": "...", "mistake_ply": N, "notes": "..." }}],
-  "new_patterns": [{{ "label": "...", "description": "...", "category": "...", "mistakes": [...] }}],
+  "new_patterns": [{{ "label": "...", "description": "...", "category": "..." }}],
   "delta_summary": "Brief overall assessment of improvement or regression"
 }}"""
 

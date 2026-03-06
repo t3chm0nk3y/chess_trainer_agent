@@ -15,6 +15,7 @@ class Settings:
     )
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-20250514")
     ENGINE_DEPTH: int = int(os.getenv("ENGINE_DEPTH", "20"))
+    STOCKFISH_PATH: str = os.getenv("STOCKFISH_PATH", "stockfish")
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
 

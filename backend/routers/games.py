@@ -37,7 +37,9 @@ def _store_parsed_games(db: Session, parsed_games, source: str, username: str = 
 
         # Deduplicate
         if source_id:
-            existing = db.query(Game).filter(Game.source == source, Game.source_id == source_id).first()
+            existing = db.query(Game).filter(
+                Game.source == source, Game.source_id == source_id
+            ).first()
             if existing:
                 skipped += 1
                 continue

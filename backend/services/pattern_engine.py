@@ -6,7 +6,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from backend.models import Game, Move, Pattern, PatternInstance, ProgressSnapshot
+from backend.models import Game, Move, Pattern, ProgressSnapshot
 from backend.services import claude_agent
 
 logger = logging.getLogger(__name__)
