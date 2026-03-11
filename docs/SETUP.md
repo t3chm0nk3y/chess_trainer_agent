@@ -1,184 +1,234 @@
-# Developer Setup
-# Chess Trainer Agent
-
----
+# Setup & Operations Guide
 
 ## Prerequisites
 
 - Python 3.11+
-- Stockfish chess engine binary
-- Anthropic API key (for Claude integration)
-- Lichess API token (optional, for game import)
-
----
+- Node.js 18+ (for frontend)
+- Stockfish binary (at `bin/stockfish` or set `STOCKFISH_PATH`)
+- Anthropic API key
+- Lichess API token
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone <repo-url>
-cd chess_trainer_agent
-
-# Create and activate virtual environment
+# Virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+source .venv/bin/activate
 
-# Install with dev dependencies
+# Install dependencies
 pip install -e ".[dev]"
+
+# Frontend
+cd frontend && npm install && cd ..
 ```
 
----
+## Environment Variables
 
-## Stockfish Setup
+Create `.env` in project root:
 
-Download Stockfish from https://stockfishchess.org/download/ and either:
-
-1. Place the binary in `bin/stockfish` (gitignored), or
-2. Install system-wide and set the `STOCKFISH_PATH` env var
-
----
-
-## Environment Configuration
-
-Copy the example and fill in your values:
-
-```bash
-cp .env.example .env
 ```
-
-### Variables
+ANTHROPIC_API_KEY=sk-ant-...
+LICHESS_TOKEN=lip_...
+LICHESS_USERNAME=your_username
+STOCKFISH_PATH=bin/stockfish
+STOCKFISH_DEPTH=18
+```
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Claude API key for pattern analysis |
-| `LICHESS_TOKEN` | No | - | Lichess personal API token for game import |
-| `STOCKFISH_PATH` | No | "stockfish" | Path to Stockfish binary |
-| `ENGINE_DEPTH` | No | 20 | Stockfish search depth (higher = slower, more accurate) |
-| `CLAUDE_MODEL` | No | "claude-sonnet-4-20250514" | Claude model to use |
-| `DATABASE_URL` | No | sqlite:///backend/chess_trainer.db | SQLAlchemy database URL |
+| `ANTHROPIC_API_KEY` | Yes | — | Claude API key for pattern annotation |
+| `LICHESS_TOKEN` | Yes | — | Lichess personal API token |
+| `LICHESS_USERNAME` | Yes | — | Lichess username to import games for |
+| `STOCKFISH_PATH` | Yes | — | Path to Stockfish binary |
+| `STOCKFISH_DEPTH` | No | 18 | Stockfish search depth |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./chess_trainer.db` | Database URL |
+| `CP_LOSS_INACCURACY` | No | 50 | Centipawn loss threshold for inaccuracy |
+| `CP_LOSS_MISTAKE` | No | 100 | Centipawn loss threshold for mistake |
+| `CP_LOSS_BLUNDER` | No | 200 | Centipawn loss threshold for blunder |
+| `MAX_RETRIES` | No | 5 | Max retry attempts for failed analysis |
+| `REGISTRY_PATH` | No | `registry/patterns.yaml` | Path to pattern registry |
 
 ---
 
-## Running the Backend
+## Running the App
 
 ```bash
-# Development mode with auto-reload
-uvicorn backend.main:app --reload
+# Backend (from project root)
+uvicorn main:app --reload
 
-# Production mode
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+# Frontend (separate terminal)
+cd frontend && npm run dev
 ```
 
-The API will be available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
-
-On first startup, the app will:
-1. Create all database tables
-2. Seed the mistake category taxonomy
+- Backend API: http://localhost:8000 (docs at `/docs`)
+- Frontend: http://localhost:5173 (proxies `/api` to backend)
 
 ---
 
-## Running the Workflow MCP Server
+## Analysis Pipeline
 
-```bash
-cd workflow-mcp
-python server.py
+The pipeline has three layers that run sequentially per game. Each layer is independent and safe to re-run.
+
+```
+Import → Engine Analysis → Annotation → Condition Detection → Opening Stats
+         (Stockfish)        (Claude AI)   (deterministic)      (aggregation)
 ```
 
-Note: The workflow server is standalone and not yet connected to the backend.
+### Step 1: Import Games
+
+```bash
+# Via API
+curl -X POST http://localhost:8000/api/games/import
+
+# Via script
+.venv/bin/python scripts/import_and_analyze.py
+```
+
+This imports all rated games from Lichess and deduplicates by `lichess_id`.
+
+### Step 2: Engine Analysis (Stockfish)
+
+Evaluates every move with Stockfish. Sets `cp_eval`, `cp_loss`, `best_move`, `mistake_severity`. This is the slowest step (~2-3 games/minute at depth 18).
+
+```bash
+# Run on all pending games (long-running, ~10hrs for 1500 games)
+.venv/bin/python scripts/run_engine.py
+```
+
+Engine data is **immutable** once complete — never re-evaluated.
+
+### Step 3: Annotation (Claude AI)
+
+Classifies each mistake move against the 61-pattern registry using Claude. Creates `MovePatternMatch` records. Requires `ANTHROPIC_API_KEY`.
+
+```bash
+# Run on all engine-complete, annotation-pending games
+.venv/bin/python scripts/run_pipeline.py --stage annotation
+```
+
+### Step 4: Condition Detection
+
+Detects structural game conditions (GC-001 through GC-010) from move data. No external API calls — purely deterministic. Creates `GameCondition` records.
+
+```bash
+.venv/bin/python scripts/run_pipeline.py --stage conditions
+```
+
+### Step 5: Opening Stats
+
+Aggregates W/L/D, avg CP loss, and divergence moves by opening line. Full recompute each time.
+
+```bash
+.venv/bin/python scripts/run_pipeline.py --stage openings
+```
+
+### Run All Post-Engine Stages
+
+```bash
+.venv/bin/python scripts/run_pipeline.py --stage all
+```
+
+This runs annotation → conditions → openings in order.
+
+### Incremental Processing
+
+All stages are safe to run repeatedly:
+- **Engine**: skips games with `engine_status != "pending"`
+- **Annotation**: skips games already annotated; uses `PatternScanLog` to skip scanned patterns
+- **Conditions**: skips games with `condition_status != "pending"`; unique constraint prevents duplicates
+- **Openings**: full recompute (deletes and reinserts)
+
+So the typical workflow after initial import is:
+1. Start engine analysis in background
+2. Periodically run `scripts/run_pipeline.py --stage all` to process completed games
+3. Re-run after engine finishes to catch remaining games
 
 ---
 
-## Running Tests
+## Monitoring Progress
 
 ```bash
-# Run all tests
-pytest
+# Analysis status (games per layer status)
+curl http://localhost:8000/api/analysis/status
 
-# Run with verbose output
-pytest -v
+# Failed games
+curl http://localhost:8000/api/analysis/failed
 
-# Run specific test file
-pytest tests/test_engine.py
+# Coverage report
+curl http://localhost:8000/api/admin/coverage
 
-# Run specific test
-pytest tests/test_engine.py::test_classify_move
-```
+# Stuck jobs (running > 30 min)
+curl http://localhost:8000/api/admin/stuck
 
-### Test Files
-
-| File | Tests |
-|------|-------|
-| `tests/test_pgn_parser.py` | PGN parsing, date handling, multi-game files |
-| `tests/test_classifier.py` | Move classification thresholds, phase detection |
-| `tests/test_engine.py` | Stockfish engine integration |
-| `tests/test_models.py` | ORM model creation, relationships |
-| `tests/test_analysis_worker.py` | Full analysis pipeline |
-| `tests/test_seed.py` | Mistake category seeding |
-
----
-
-## Linting
-
-```bash
-# Check for lint errors
-ruff check .
-
-# Auto-fix
-ruff check --fix .
-```
-
-Configuration in `pyproject.toml`:
-- Line length: 100
-- Target: Python 3.11
-- Rules: E (pycodestyle), F (pyflakes), I (isort), W (warnings)
-
----
-
-## Project Structure
-
-```
-chess_trainer_agent/
-├── backend/           # FastAPI application
-│   ├── main.py        # App entry point
-│   ├── config.py      # Settings
-│   ├── database.py    # DB setup
-│   ├── models.py      # ORM models
-│   ├── seed.py        # Initial data
-│   ├── routers/       # API endpoints
-│   ├── services/      # Business logic
-│   └── tasks/         # Background workers
-├── workflow-mcp/      # Workflow MCP server
-├── frontend/          # React app (not yet implemented)
-├── tests/             # Test suite
-├── docs/              # Documentation
-├── bin/               # Binaries (gitignored)
-├── pyproject.toml     # Build config
-└── requirements.txt   # Flat deps
+# Retry all failed
+curl -X POST http://localhost:8000/api/analysis/retry-failed
 ```
 
 ---
 
-## Common Tasks
+## API Endpoints
 
-### Import games from Lichess
+### Games
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/games/import` | Import from Lichess |
+| GET | `/api/games` | List games (paginated) |
+| GET | `/api/games/{id}` | Full game with moves + conditions |
+| GET | `/api/games/{id}/mistakes` | Mistake moves with pattern matches |
+| GET | `/api/games/{id}/recurring` | Recurring pattern matches |
+
+### Analysis
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/analysis/run` | Check pending count |
+| GET | `/api/analysis/status` | Status counts per layer |
+| GET | `/api/analysis/failed` | Failed/needs-review games |
+| POST | `/api/analysis/retry-failed` | Re-queue all failed |
+
+### Patterns
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/patterns` | All patterns by frequency |
+| GET | `/api/patterns/report` | Phase × axis matrix |
+| GET | `/api/patterns/conditions` | Game conditions with W/L/D |
+| GET | `/api/patterns/{id}` | Pattern with occurrences |
+
+### Openings
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/openings` | All lines by loss rate |
+| GET | `/api/openings/{eco}` | Variations for one ECO code |
+| POST | `/api/openings/compute` | Recompute stats |
+
+### Admin
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/registry` | Full pattern registry as JSON |
+| POST | `/api/admin/registry/reload` | Reload YAML + queue re-scans |
+| GET | `/api/admin/coverage` | Coverage report |
+| GET | `/api/admin/scan-log` | Pattern scan coverage matrix |
+| GET | `/api/admin/stuck` | Stuck jobs |
+| POST | `/api/admin/reprocess/game/{id}` | Re-queue one game |
+| POST | `/api/admin/reprocess/pattern/{id}` | Queue re-scan for pattern |
+
+---
+
+## Tests
 
 ```bash
-curl -X POST "http://localhost:8000/api/games/import/lichess?username=YOUR_USERNAME&max_games=10"
+pytest                    # all tests
+pytest -v                 # verbose
+pytest tests/test_foo.py  # specific file
+ruff check .              # lint
 ```
 
-### Trigger analysis (manual)
-
-Games are not automatically analyzed on import. The analysis worker needs to be called programmatically or via the API. Currently, you can trigger analysis by calling `analyze_game(game_id)` from `backend/tasks/analysis_worker.py`.
-
-### Check progress
-
-```bash
-curl http://localhost:8000/api/progress/summary
-```
-
-### Refresh opening stats
-
-```bash
-curl -X POST http://localhost:8000/api/openings/refresh
-```
+| File | Coverage |
+|------|----------|
+| `test_pipeline.py` | PGN parsing, move creation, engine analysis |
+| `test_deduplication.py` | Lichess import dedup |
+| `test_classifier.py` | Phase assignment, severity thresholds |
+| `test_registry.py` | YAML loading, pattern filtering |
+| `test_annotator.py` | Claude API mocking, JSON parsing |
+| `test_conditions.py` | Game condition detection, scanner, admin endpoints |
+| `test_opening_stats.py` | Opening aggregation, divergence, API |
+| `test_retry.py` | Retry worker, stuck reset, exceeded retries |

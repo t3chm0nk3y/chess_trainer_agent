@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
@@ -14,7 +14,6 @@ async function request(path, options = {}) {
 }
 
 // --- Games ---
-
 export function listGames(params = {}) {
   const query = new URLSearchParams(params).toString();
   return request(`/games?${query}`);
@@ -24,92 +23,70 @@ export function getGame(id) {
   return request(`/games/${id}`);
 }
 
-export function getGameMoves(id) {
-  return request(`/games/${id}/moves`);
+export function getGameMistakes(id) {
+  return request(`/games/${id}/mistakes`);
 }
 
-export function deleteGame(id) {
-  return request(`/games/${id}`, { method: "DELETE" });
+export function getGameRecurring(id) {
+  return request(`/games/${id}/recurring`);
 }
 
-export function uploadPGN(file) {
-  const form = new FormData();
-  form.append("file", file);
-  return fetch(`${API_BASE}/games/upload`, { method: "POST", body: form }).then(
-    (r) => r.json()
-  );
-}
-
-export function importLichess(username, options = {}) {
-  const params = new URLSearchParams({ username });
-  if (options.since) params.set("since", options.since);
-  if (options.color) params.set("color", options.color);
-  if (options.rated !== null && options.rated !== undefined) params.set("rated", options.rated);
-  if (options.time_control) params.set("time_control", options.time_control);
-  return request(`/games/import/lichess?${params}`, { method: "POST" });
-}
-
-export function importChessCom(username, year, month) {
-  const params = new URLSearchParams({ username });
-  if (year) params.set("year", year);
-  if (month) params.set("month", month);
-  return request(`/games/import/chesscom?${params}`, { method: "POST" });
+export function importGames(maxGames = null) {
+  const query = maxGames ? `?max_games=${maxGames}` : "";
+  return request(`/games/import${query}`, { method: "POST" });
 }
 
 // --- Patterns ---
-
-export function listPatterns() {
-  return request("/patterns");
+export function listPatterns(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/patterns?${query}`);
 }
 
 export function getPattern(id) {
   return request(`/patterns/${id}`);
 }
 
-export function refreshPatterns() {
-  return request("/patterns/refresh", { method: "POST" });
+export function getPatternReport() {
+  return request("/patterns/report");
+}
+
+export function getConditions() {
+  return request("/patterns/conditions");
+}
+
+// --- Openings ---
+export function listOpenings(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/openings?${query}`);
+}
+
+export function getOpening(ecoCode) {
+  return request(`/openings/${encodeURIComponent(ecoCode)}`);
+}
+
+export function computeOpenings() {
+  return request("/openings/compute", { method: "POST" });
+}
+
+// --- Reports ---
+export function listReports(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/reports?${query}`);
+}
+
+export function getReport(type, key) {
+  return request(`/reports/${encodeURIComponent(type)}/${encodeURIComponent(key)}`);
+}
+
+export function generateReports() {
+  return request("/reports/generate", { method: "POST" });
 }
 
 // --- Analysis ---
-
-export function compareGame(gameId) {
-  return request("/analyze/compare", {
-    method: "POST",
-    body: JSON.stringify({ game_id: gameId }),
-  });
+export function getAnalysisStatus() {
+  return request("/analysis/status");
 }
 
-export function getAnalysisStatus(jobId) {
-  return request(`/analyze/status/${jobId}`);
-}
-
-// --- Progress ---
-
-export function getProgress() {
-  return request("/progress");
-}
-
-export function getProgressSummary() {
-  return request("/progress/summary");
-}
-
-// --- Workflows ---
-
-export function listWorkflows() {
-  return request("/workflows");
-}
-
-export function getWorkflow(name) {
-  return request(`/workflows/${name}`);
-}
-
-export function executeWorkflow(name, params = {}) {
-  return request(`/workflows/${name}/execute`, {
-    method: "POST",
-    body: JSON.stringify(params),
-  });
-}
-
-export function getWorkflowRunStatus(runId) {
-  return request(`/workflows/runs/${runId}`);
+export function retryFailed() {
+  return request("/analysis/retry-failed", { method: "POST" });
 }

@@ -1,37 +1,47 @@
 /**
- * Scrollable move list with classification badges.
+ * Scrollable move list with severity indicators.
+ * Expects moves as array of { move_number, color, san, mistake_severity, ply }
  */
 export default function MoveList({ moves = [], currentPly = 0, onSelectPly }) {
-  // Group moves into pairs (white + black)
   const pairs = [];
   for (let i = 0; i < moves.length; i += 2) {
     pairs.push({
-      number: Math.floor(i / 2) + 1,
+      number: moves[i].move_number,
       white: moves[i],
       black: moves[i + 1] || null,
     });
   }
 
   return (
-    <div className="move-list card" style={{ maxHeight: 480, overflowY: "auto" }}>
+    <div className="card" style={{ maxHeight: 480, overflowY: "auto", padding: 0 }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <tbody>
           {pairs.map((pair) => (
             <tr key={pair.number}>
-              <td className="mono" style={{ color: "var(--text-secondary)", width: 36, padding: "2px 4px" }}>
+              <td
+                className="mono"
+                style={{
+                  color: "var(--text-muted)",
+                  width: 36,
+                  padding: "2px 6px",
+                  fontSize: "0.75rem",
+                }}
+              >
                 {pair.number}.
               </td>
               <MoveCell
                 move={pair.white}
-                isActive={pair.white?.ply + 1 === currentPly}
-                onClick={() => onSelectPly?.(pair.white.ply + 1)}
+                isActive={pair.white?.ply === currentPly}
+                onClick={() => onSelectPly?.(pair.white.ply)}
               />
-              {pair.black && (
+              {pair.black ? (
                 <MoveCell
                   move={pair.black}
-                  isActive={pair.black?.ply + 1 === currentPly}
-                  onClick={() => onSelectPly?.(pair.black.ply + 1)}
+                  isActive={pair.black?.ply === currentPly}
+                  onClick={() => onSelectPly?.(pair.black.ply)}
                 />
+              ) : (
+                <td />
               )}
             </tr>
           ))}
@@ -44,13 +54,11 @@ export default function MoveList({ moves = [], currentPly = 0, onSelectPly }) {
 function MoveCell({ move, isActive, onClick }) {
   if (!move) return <td />;
 
-  const classColor = {
-    best: "var(--best)",
-    good: "var(--good)",
+  const severityColor = {
     inaccuracy: "var(--inaccuracy)",
     mistake: "var(--mistake)",
     blunder: "var(--blunder)",
-  }[move.classification];
+  }[move.mistake_severity];
 
   return (
     <td
@@ -59,9 +67,11 @@ function MoveCell({ move, isActive, onClick }) {
       style={{
         padding: "2px 8px",
         cursor: "pointer",
-        borderRadius: 3,
-        backgroundColor: isActive ? "var(--bg-secondary)" : "transparent",
-        borderLeft: classColor ? `3px solid ${classColor}` : "3px solid transparent",
+        fontSize: "0.8rem",
+        backgroundColor: isActive ? "var(--bg-elevated)" : "transparent",
+        borderLeft: severityColor
+          ? `3px solid ${severityColor}`
+          : "3px solid transparent",
       }}
     >
       {move.san}

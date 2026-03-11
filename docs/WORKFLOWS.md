@@ -1,7 +1,7 @@
 # Workflows
 # Chess Trainer Agent
 
-The workflow system uses a FastMCP server to define and manage multi-step analysis pipelines.
+The workflow system uses YAML definitions to describe multi-step analysis pipelines. The backend executes these via `workflow_executor.py`.
 
 ---
 
@@ -9,8 +9,8 @@ The workflow system uses a FastMCP server to define and manage multi-step analys
 
 ```
 workflow-mcp/
-├── server.py      # FastMCP server exposing workflow tools
-├── models.py      # Workflow, WorkflowRun, WorkflowStep dataclasses
+├── server.py      # FastMCP server (standalone, not used by backend)
+├── models.py      # Workflow/WorkflowRun dataclasses
 ├── store.py       # In-memory store + YAML file loader
 └── workflows/     # YAML workflow definitions
     ├── full_game_analysis.yaml
@@ -21,62 +21,65 @@ workflow-mcp/
     └── weekly_progress_report.yaml
 ```
 
-### Current Status
+### Execution Engine
 
-The workflow MCP server is **fully implemented** as a standalone service. However, it is **not yet wired** to the backend -- the backend routers return stubbed responses and do not call the workflow MCP tools. Workflow execution (actually running the steps) is also not implemented.
+The backend implements its own workflow executor (`backend/services/workflow_executor.py`) rather than connecting to the MCP server as a client. This avoids MCP transport complexity while reusing the YAML workflow definitions.
 
----
-
-## MCP Server Tools
-
-The `server.py` exposes these FastMCP tools:
-
-| Tool | Description |
-|------|-------------|
-| `workflow_list` | List all registered workflows |
-| `workflow_get(name)` | Get full workflow definition |
-| `workflow_execute(name, params)` | Start a workflow run |
-| `workflow_step_complete(run_id, step, result)` | Record step completion |
-| `workflow_run_status(run_id)` | Get run status |
-| `workflow_create(...)` | Register a new workflow |
-| `workflow_update(name, steps)` | Update workflow (auto-increments version) |
-| `workflow_history(name, limit)` | Recent runs for a workflow |
-
-### Running the Server
-
-```bash
-cd workflow-mcp
-python server.py
-```
-
-This loads all YAML definitions from `workflows/` on startup.
+The executor:
+1. Loads YAML definitions from `workflow-mcp/workflows/` (cached at startup)
+2. Creates a `WorkflowRun` DB record for persistence
+3. Resolves `{{ variable }}` templates against input parameters and step results
+4. Dispatches each step to a handler via the tool registry (28 handlers)
+5. Records step-by-step results as JSON in the `WorkflowRun` record
 
 ---
 
-## Data Model
+## Template Syntax
 
-### Workflow
-- `name`: Unique identifier
-- `description`: Human-readable purpose
-- `trigger`: "manual", "on_import", or "scheduled"
-- `parameters`: List of input parameter definitions
-- `steps`: Ordered list of step definitions
-- `outputs`: List of output names
-- `version`: Auto-incrementing version number
+Workflow inputs use `{{ }}` template syntax:
 
-### WorkflowStep
-- `number`: Step sequence number
-- `tool`: The tool/service to call (e.g. "chessagine.analyze_game")
-- `description`: What this step does
-- `input_map`: Template mapping for inputs (uses `{{ variable }}` syntax)
+- **`{{ variable }}`** -- Resolves to an input parameter
+- **`{{ step_N.field }}`** -- Resolves to a field from step N's result
 
-### WorkflowRun
-- `run_id`: UUID
-- `workflow_name`: Which workflow
-- `parameters`: Input params for this run
-- `status`: "running", "completed", "failed"
-- `step_results`: List of per-step results
-- `started_at` / `completed_at`: Timestamps
+Templates can appear in string values, returning the resolved object if the template fills the entire string, or interpolating within a larger string.
+
+---
+
+## Tool Registry
+
+The executor maps YAML tool names to Python handler functions:
+
+| Tool Name | Handler | Description |
+|-----------|---------|-------------|
+| `database.fetch_game` | Queries Game by ID | Returns pgn, game_id, player_color |
+| `database.fetch_patterns` | Queries unresolved Patterns | Returns pattern list |
+| `database.query_analyzed_games` | Queries analyzed games | Returns game list + count |
+| `database.fetch_recent_games` | Queries games by date | Returns recent game IDs |
+| `database.store_analysis` | No-op passthrough | Analysis stored by worker |
+| `database.update_status` | Updates Game.analysis_status | |
+| `database.deduplicate` | No-op passthrough | Handled by _store_parsed_games |
+| `database.store_games` | No-op passthrough | |
+| `database.update_patterns` | No-op passthrough | |
+| `database.update_pattern_frequencies` | No-op passthrough | |
+| `analysis.queue_batch` | Calls queue_analysis() | Queues games for analysis |
+| `chessagine.analyze_game` | Calls _analyze_game_sync() | Full Stockfish analysis |
+| `classifier.classify_moves` | No-op passthrough | Handled by worker |
+| `classifier.detect_phases` | No-op passthrough | Handled by worker |
+| `claude.annotate_mistakes` | No-op passthrough | Optional step |
+| `claude.compare_new_game` | Calls match_game_to_patterns() | Pattern comparison |
+| `claude.synthesize_patterns` | Calls run_pattern_synthesis() | Cross-game synthesis |
+| `claude.generate_summary` | Returns placeholder | |
+| `pattern_engine.aggregate_mistakes` | Calls gather_game_mistakes() | |
+| `pattern_engine.build_summary` | Passthrough | |
+| `pattern_engine.diff_patterns` | Passthrough | |
+| `progress.calculate_delta` | Returns placeholder | |
+| `progress.calculate_accuracy` | Queries Move accuracy | |
+| `progress.compare_patterns` | Returns placeholder | |
+| `progress.identify_trends` | Returns placeholder | |
+| `progress.create_snapshot` | Calls create_progress_snapshot() | |
+| `workflow.execute` | Recursive sub-workflow | |
+| `lichess_mcp.export_games` | Calls lichess_api.fetch_games() | |
+| `pgn_parser.parse` | Calls pgn_parser.parse_pgn() | |
 
 ---
 
@@ -87,14 +90,14 @@ This loads all YAML definitions from `workflows/` on startup.
 End-to-end analysis of a single game. 7 steps:
 
 1. Fetch game PGN from database
-2. Analyze each position with engine (originally ChessAgine MCP)
+2. Analyze each position with Stockfish
 3. Classify moves (best/good/inaccuracy/mistake/blunder)
 4. Detect game phases (opening/middlegame/endgame)
 5. Send mistakes to Claude for annotation
 6. Store analysis results in database
 7. Mark game as analyzed
 
-**Note:** Steps 2-4 are currently handled directly by `analysis_worker.py` instead of going through the workflow system.
+**Note:** In practice, steps 2-7 are handled atomically by `analysis_worker._analyze_game_sync()`.
 
 ### new_game_comparison (trigger: manual)
 
@@ -114,32 +117,29 @@ Cross-game pattern identification.
 
 Game import from Lichess.
 
-### import_chesscom_games (trigger: manual)
-
-Game import from Chess.com.
-
 ### weekly_progress_report (trigger: scheduled)
 
 Generate a weekly progress summary.
 
 ---
 
-## Store Layer
+## API Endpoints
 
-`WorkflowStore` provides an in-memory store:
-- Workflow definitions are loaded from YAML files at startup
-- Workflow runs are stored in memory (no persistence across restarts)
-- The store supports CRUD operations and run tracking
-
-The backend has a separate `WorkflowRun` ORM model in `backend/models.py` for persistent run tracking, but it is not yet connected to the workflow MCP store.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/workflows` | List all registered workflows |
+| GET | `/api/workflows/{name}` | Get workflow definition |
+| GET | `/api/workflows/{name}/runs` | Run history for a workflow |
+| POST | `/api/workflows/{name}/execute` | Trigger workflow execution |
+| GET | `/api/workflows/runs/{run_id}` | Get specific run status |
 
 ---
 
-## Integration Gap
+## MCP Server (Standalone)
 
-To complete workflow integration (Phase 6 in the SRS):
+The `workflow-mcp/server.py` FastMCP server remains available as a standalone service but is not used by the backend. It can be run independently for testing or future MCP-based integrations:
 
-1. The backend needs to connect to the workflow MCP server (via `mcp_client.py` or direct function calls)
-2. Workflow step execution needs to dispatch to actual service functions
-3. The `{{ variable }}` template syntax in YAML input_maps needs an interpolation engine
-4. Run results from the MCP store need to sync with the backend's `WorkflowRun` table
+```bash
+cd workflow-mcp
+python server.py
+```

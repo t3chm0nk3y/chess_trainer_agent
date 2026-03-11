@@ -19,7 +19,7 @@ Returns server health status.
 
 ### `POST /api/games/upload`
 
-Upload a PGN file containing one or more games.
+Upload a PGN file containing one or more games. Games are auto-queued for analysis.
 
 **Request:** Multipart file upload (field: `file`)
 
@@ -30,7 +30,7 @@ Upload a PGN file containing one or more games.
 
 ### `POST /api/games/import/lichess`
 
-Import games from Lichess for a given user.
+Import games from Lichess for a given user. Games are auto-queued for analysis.
 
 **Query Parameters:**
 | Parameter | Type | Required | Description |
@@ -45,6 +45,17 @@ Import games from Lichess for a given user.
 **Response:**
 ```json
 {"status": "ok", "imported": 10, "skipped": 2}
+```
+
+### `GET /api/games/import/lichess/latest`
+
+Get the date of the most recently imported Lichess game for a user.
+
+**Query Parameters:** `username` (string, required)
+
+**Response:**
+```json
+{"latest_date": "2026-03-06", "game_count": 42}
 ```
 
 ### `POST /api/games/import/chesscom`
@@ -214,24 +225,33 @@ Recalculate all opening statistics from analyzed games. Clears and rebuilds the 
 
 ### `POST /api/analyze/compare`
 
-Submit a game for pattern comparison. **Status: Stubbed (returns queued status).**
+Submit a game for analysis and comparison against known patterns. Runs the `new_game_comparison` workflow.
 
 **Query Parameters:** `game_id` (string)
 
-**Response:** `{"status": "queued", "game_id": "uuid"}`
+**Response:**
+```json
+{"run_id": "uuid", "status": "completed", "game_id": "uuid"}
+```
 
-### `GET /api/analyze/status/{job_id}`
+### `POST /api/analyze/pending`
 
-Check status of an analysis job.
+Trigger analysis for all pending games.
+
+**Response:** `{"queued": 5}`
+
+### `GET /api/analyze/status/{run_id}`
+
+Check status of a workflow run.
 
 **Response:**
 ```json
 {
-  "job_id": "uuid",
-  "workflow": "full_game_analysis",
-  "status": "running",
+  "run_id": "uuid",
+  "workflow": "new_game_comparison",
+  "status": "completed",
   "started_at": "2026-03-06T10:00:00",
-  "completed_at": null
+  "completed_at": "2026-03-06T10:01:00"
 }
 ```
 
@@ -257,6 +277,8 @@ List all patterns sorted by severity score (descending).
       "first_seen": "2026-01-15",
       "last_seen": "2026-03-05",
       "resolved": false,
+      "acknowledged": false,
+      "post_acknowledgment_count": 0,
       "example_game_ids": "[\"id1\", \"id2\"]",
       "training_recommendation": "Practice knight fork puzzles on Lichess..."
     }
@@ -283,6 +305,189 @@ Trigger Claude pattern synthesis. **Status: Stubbed.**
 
 **Response:** `{"status": "queued"}`
 
+### `GET /api/patterns/acknowledged`
+
+List all acknowledged but unresolved patterns, ordered by post-acknowledgment recurrence count.
+
+**Response:**
+```json
+{
+  "patterns": [
+    {
+      "id": "uuid",
+      "label": "Missed knight forks",
+      "description": "...",
+      "category": "tactical",
+      "frequency": 7,
+      "acknowledged_at": "2026-03-01T10:00:00",
+      "post_acknowledgment_count": 3,
+      "severity_score": 85.0
+    }
+  ],
+  "total": 2
+}
+```
+
+### `POST /api/patterns/{pattern_id}/acknowledge`
+
+Acknowledge a pattern. Creates a `PatternAcknowledgment` record.
+
+**Request Body (optional):**
+```json
+{"player_note": "I need to watch for this in the Sicilian"}
+```
+
+**Response:**
+```json
+{"status": "acknowledged", "pattern_id": "uuid", "acknowledged_at": "2026-03-06T10:00:00"}
+```
+
+### `DELETE /api/patterns/{pattern_id}/acknowledge`
+
+Revoke acknowledgment. Deletes all acknowledgment records and resets counters.
+
+**Response:** `{"status": "revoked", "pattern_id": "uuid"}`
+
+### `POST /api/patterns/{pattern_id}/resolve`
+
+Mark a pattern as resolved.
+
+**Response:** `{"status": "resolved", "pattern_id": "uuid"}`
+
+---
+
+## Reports
+
+### `GET /api/reports/mistakes`
+
+Categorized mistake report as a phase x type matrix.
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `phase` | string | Filter by phase (opening, middlegame, endgame) |
+| `type` | string | Filter by type (tactical, strategic, unclassified) |
+| `game_id` | string | Scope to a single game |
+
+**Response:**
+```json
+{
+  "matrix": {
+    "opening": {
+      "tactical": {"count": 5, "examples": [...]},
+      "strategic": {"count": 3, "examples": [...]},
+      "unclassified": {"count": 1, "examples": [...]}
+    },
+    "middlegame": { ... },
+    "endgame": { ... }
+  },
+  "phase_totals": {"opening": 9, "middlegame": 12, "endgame": 4},
+  "type_totals": {"tactical": 15, "strategic": 8, "unclassified": 2},
+  "total_mistakes": 25
+}
+```
+
+### `GET /api/reports/repeated`
+
+Repeated mistakes ordered by frequency.
+
+**Query Parameters:** `min_frequency` (int, default 2)
+
+**Response:**
+```json
+{
+  "patterns": [
+    {
+      "id": "uuid",
+      "label": "Missed knight forks",
+      "description": "...",
+      "category": "tactical",
+      "mistake_type": "tactical",
+      "severity_score": 85.0,
+      "frequency": 7,
+      "first_seen": "2026-01-15",
+      "last_seen": "2026-03-05",
+      "acknowledgment_status": "recurring",
+      "post_acknowledgment_count": 3,
+      "training_recommendation": "...",
+      "instance_count": 7,
+      "example_game_ids": ["id1", "id2"]
+    }
+  ],
+  "total": 5
+}
+```
+
+### `GET /api/reports/trends`
+
+Accuracy trends by phase, comparing recent vs older games.
+
+**Query Parameters:** `period_games` (int, default 10)
+
+**Response:**
+```json
+{
+  "trends": {
+    "opening": {"recent": 75.0, "older": 68.0, "delta": 7.0, "improving": true},
+    "middlegame": {"recent": 60.0, "older": 65.0, "delta": -5.0, "improving": false},
+    "endgame": {"recent": 55.0, "older": 50.0, "delta": 5.0, "improving": true}
+  },
+  "has_data": true
+}
+```
+
+---
+
+## Notifications
+
+### `GET /api/games/{game_id}/notifications`
+
+Get pattern-match notifications for a specific game, ordered by priority.
+
+**Priority levels:**
+1. `recurring_acknowledged` — acknowledged pattern recurring again
+2. `high_frequency` — unacknowledged pattern with frequency >= 3
+3. `moderate` — moderate frequency pattern
+4. `new` — first occurrence
+
+**Response:**
+```json
+{
+  "game_id": "uuid",
+  "notifications": [
+    {
+      "pattern_id": "uuid",
+      "pattern_label": "Missed knight forks",
+      "pattern_description": "...",
+      "category": "tactical",
+      "frequency": 7,
+      "acknowledged": true,
+      "post_acknowledgment_count": 3,
+      "severity_score": 85.0,
+      "move_id": 42,
+      "ply": 15,
+      "san": "Nf3",
+      "move_number": 8,
+      "eval_delta": 120.0,
+      "notes": "Auto-matched: mistake at ply 15",
+      "priority": 1,
+      "priority_label": "recurring_acknowledged"
+    }
+  ],
+  "summary": {
+    "total_matched": 3,
+    "recurring_acknowledged": 1,
+    "new_patterns": 1
+  }
+}
+```
+
+### `GET /api/notifications/recent`
+
+Get notifications from the most recently analyzed game.
+
+**Response:** Same format as `GET /api/games/{game_id}/notifications`.
+
 ---
 
 ## Progress
@@ -300,6 +505,13 @@ Get all progress snapshots over time.
       "date": "2026-03-06",
       "total_games": 50,
       "avg_accuracy": 72.3,
+      "accuracy_opening": 75.0,
+      "accuracy_middlegame": 68.0,
+      "accuracy_endgame": 55.0,
+      "acknowledged_patterns": 3,
+      "recurring_patterns": 1,
+      "resolved_patterns": 2,
+      "session_id": "2026-03-06",
       "patterns_json": "{...}"
     }
   ]
@@ -308,7 +520,7 @@ Get all progress snapshots over time.
 
 ### `GET /api/progress/summary`
 
-Get current aggregate stats.
+Get current aggregate stats with per-phase accuracy and pattern counts.
 
 **Response:**
 ```json
@@ -316,7 +528,72 @@ Get current aggregate stats.
   "total_games": 50,
   "total_moves": 2500,
   "accuracy": 72.3,
-  "active_patterns": 5
+  "phase_accuracy": {
+    "opening": 75.0,
+    "middlegame": 68.0,
+    "endgame": 55.0
+  },
+  "active_patterns": 5,
+  "acknowledged_patterns": 3,
+  "recurring_patterns": 1,
+  "resolved_patterns": 2
+}
+```
+
+### `GET /api/progress/sessions`
+
+List play sessions grouped by date with summary stats.
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "date": "2026-03-06",
+      "games": 5,
+      "wins": 3,
+      "losses": 1,
+      "draws": 1,
+      "accuracy": 74.2
+    }
+  ]
+}
+```
+
+### `GET /api/progress/compare`
+
+Compare two time periods side by side. Compares [from_date, to_date] vs the equivalent prior period.
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `from_date` | string | yes | Start date (YYYY-MM-DD) |
+| `to_date` | string | yes | End date (YYYY-MM-DD) |
+
+**Response:**
+```json
+{
+  "current_period": {
+    "from": "2026-03-01",
+    "to": "2026-03-06",
+    "games": 10,
+    "accuracy": 74.0,
+    "phase_accuracy": {"opening": 75.0, "middlegame": 70.0},
+    "wins": 6, "losses": 3, "draws": 1
+  },
+  "prior_period": {
+    "from": "2026-02-23",
+    "to": "2026-02-28",
+    "games": 8,
+    "accuracy": 68.0,
+    "phase_accuracy": {"opening": 70.0, "middlegame": 65.0},
+    "wins": 4, "losses": 3, "draws": 1
+  },
+  "delta": {
+    "accuracy": 6.0,
+    "games": 2,
+    "improving": true
+  }
 }
 ```
 
@@ -326,11 +603,26 @@ Get current aggregate stats.
 
 ### `GET /api/workflows`
 
-List registered workflows. **Status: Stubbed (returns empty list).**
+List all registered workflows (loaded from YAML definitions).
+
+**Response:**
+```json
+{
+  "workflows": [
+    {
+      "name": "full_game_analysis",
+      "description": "End-to-end analysis of a single game",
+      "trigger": "on_import",
+      "version": 1,
+      "steps": 7
+    }
+  ]
+}
+```
 
 ### `GET /api/workflows/{name}`
 
-Get workflow definition. **Status: Stubbed.**
+Get full workflow definition.
 
 ### `GET /api/workflows/{name}/runs`
 
@@ -340,25 +632,47 @@ Get run history for a workflow.
 
 ### `POST /api/workflows/{name}/execute`
 
-Trigger a workflow. **Status: Stubbed.**
+Trigger a workflow execution with optional parameters.
+
+**Request Body (optional):** `{"game_id": "uuid"}`
+
+**Response:**
+```json
+{
+  "run_id": "uuid",
+  "workflow": "new_game_comparison",
+  "status": "completed",
+  "step_count": 5
+}
+```
 
 ### `GET /api/workflows/runs/{run_id}`
 
-Get specific run status.
+Get specific run status with step results.
 
 ---
 
-## Planned Endpoints (from SRS, not yet implemented)
+## Chat
 
-| Method | Path | Description | SRS Ref |
-|--------|------|-------------|---------|
-| GET | `/api/reports/mistakes` | Categorized mistake report (phase x type matrix) | FR-CAT-3 |
-| GET | `/api/reports/repeated` | Repeated mistakes by frequency | FR-CAT-4 |
-| GET | `/api/games/{id}/notifications` | Pattern-match notifications for a game | FR-NOT-2 |
-| GET | `/api/notifications/recent` | Notifications from latest analysis | FR-NOT-3 |
-| POST | `/api/patterns/{id}/acknowledge` | Acknowledge a pattern | FR-ACK-1 |
-| DELETE | `/api/patterns/{id}/acknowledge` | Revoke acknowledgment | FR-ACK-1 |
-| POST | `/api/patterns/{id}/resolve` | Mark pattern resolved | FR-ACK-4 |
-| GET | `/api/patterns/acknowledged` | List acknowledged patterns | FR-ACK-2 |
-| GET | `/api/progress/sessions` | Session-based game grouping | FR-PRG-2 |
-| GET | `/api/progress/compare` | Period comparison | FR-PRG-4 |
+### `POST /api/chat/stream`
+
+SSE endpoint for streaming chat with the chess coach agent.
+
+**Request Body:**
+```json
+{
+  "messages": [
+    {"role": "user", "content": "What are my worst openings?"}
+  ]
+}
+```
+
+**SSE Events:**
+```
+data: {"type": "text_delta", "text": "Based on your data..."}
+data: {"type": "tool_call", "name": "get_openings_ranked"}
+data: {"type": "tool_result", "name": "get_openings_ranked", "summary": "received 450 chars"}
+data: {"type": "done"}
+```
+
+Event types: `text_delta`, `tool_call`, `tool_result`, `done`, `error`

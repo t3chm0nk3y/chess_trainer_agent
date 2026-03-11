@@ -12,8 +12,7 @@ export default function ChessBoard({ fen, boardWidth = 320, orientation = "white
       arePiecesDraggable={false}
       animationDuration={150}
       customBoardStyle={{
-        borderRadius: "4px",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+        borderRadius: "0px",
       }}
       customDarkSquareStyle={{ backgroundColor: "#779952" }}
       customLightSquareStyle={{ backgroundColor: "#edeed1" }}

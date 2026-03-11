@@ -81,7 +81,7 @@ Individual moves within a game, with engine analysis results.
 | `best_move_uci` | String | yes | - | Engine's best move in the position |
 | `classification` | String | yes | - | "best", "good", "inaccuracy", "mistake", "blunder" |
 | `phase` | String | yes | - | "opening", "middlegame", "endgame" |
-| `mistake_type` | String | yes | - | "tactical" or "strategic" (not yet populated) |
+| `mistake_type` | String | yes | - | "tactical" or "strategic" (populated by Claude batch classification) |
 | `themes_json` | Text | yes | - | JSON positional themes (not yet populated) |
 
 **Relationships:** `game` -> Game, `pattern_instances` -> PatternInstance
@@ -216,13 +216,13 @@ Point-in-time accuracy and pattern metrics.
 | `snapshot_date` | Date | no | - | Snapshot date |
 | `total_games` | Integer | no | 0 | Analyzed games at time of snapshot |
 | `avg_accuracy` | Float | no | 0.0 | % of moves classified "best" or "good" |
-| `accuracy_opening` | Float | yes | - | Opening phase accuracy (not yet populated) |
-| `accuracy_middlegame` | Float | yes | - | Middlegame accuracy (not yet populated) |
-| `accuracy_endgame` | Float | yes | - | Endgame accuracy (not yet populated) |
-| `acknowledged_patterns` | Integer | no | 0 | Count at time of snapshot (not yet populated) |
-| `recurring_patterns` | Integer | no | 0 | Count at time of snapshot (not yet populated) |
-| `resolved_patterns` | Integer | no | 0 | Count at time of snapshot (not yet populated) |
-| `session_id` | String | yes | - | Session grouping key (not yet used) |
+| `accuracy_opening` | Float | yes | - | Opening phase accuracy |
+| `accuracy_middlegame` | Float | yes | - | Middlegame accuracy |
+| `accuracy_endgame` | Float | yes | - | Endgame accuracy |
+| `acknowledged_patterns` | Integer | no | 0 | Count at time of snapshot |
+| `recurring_patterns` | Integer | no | 0 | Count at time of snapshot |
+| `resolved_patterns` | Integer | no | 0 | Count at time of snapshot |
+| `session_id` | String | yes | - | Session grouping key (date string) |
 | `patterns_json` | Text | yes | - | JSON snapshot of active patterns |
 
 ---

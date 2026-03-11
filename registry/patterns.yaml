@@ -1,0 +1,256 @@
+registry_version: "1.0"
+last_updated: "2026-03-10"
+
+patterns:
+
+  # ── OPENING TACTICAL ──────────────────────────────────────────────────────
+  - { id: OT-001, phase: opening, axis: tactical,  detection_method: engine,  cp_loss_min: 200, active: true,
+      name: "Hung Piece in Opening",
+      description: "Left a piece en prise during the opening phase" }
+
+  - { id: OT-002, phase: opening, axis: tactical,  detection_method: hybrid,  cp_loss_min: 150, active: true,
+      name: "Premature Attack Refuted",
+      description: "An early attack that loses material or tempo when correctly met" }
+
+  - { id: OT-003, phase: opening, axis: tactical,  detection_method: hybrid,  cp_loss_min: 150, active: true,
+      name: "Failed Opening Combination",
+      description: "An attempted tactical sequence in the opening that does not work" }
+
+  - { id: OT-004, phase: opening, axis: tactical,  detection_method: engine,  cp_loss_min: 150, active: true,
+      name: "Missed Opponent Tactic",
+      description: "Failed to respond to opponent's tactical threat in the opening" }
+
+  - { id: OT-005, phase: opening, axis: tactical,  detection_method: hybrid,  cp_loss_min: 100, active: true,
+      name: "Wrong Recapture",
+      description: "Recaptured with the wrong piece, allowing a fork or pin" }
+
+  # ── OPENING STRATEGIC ─────────────────────────────────────────────────────
+  - { id: OS-001, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 50,  active: true,
+      name: "Premature Pawn Push",
+      description: "A pawn push that weakens key squares before development is complete" }
+
+  - { id: OS-002, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 50,  active: true,
+      name: "Delayed Castling",
+      description: "Failed to castle when king safety required it" }
+
+  - { id: OS-003, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 30,  active: true,
+      name: "Redundant Piece Move",
+      description: "Moved the same piece twice in the opening without compensation" }
+
+  - { id: OS-004, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 30,  active: true,
+      name: "Poor Development Order",
+      description: "Developed pieces in a suboptimal order, ceding initiative" }
+
+  - { id: OS-005, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 50,  active: true,
+      name: "Ignored Center Control",
+      description: "Conceded the center without compensation" }
+
+  - { id: OS-006, phase: opening, axis: strategic, detection_method: ai,      cp_loss_min: 50,  active: true,
+      name: "Early Queen Sortie Backfires",
+      description: "Moved the queen early and lost tempo being chased back" }
+
+  - { id: OS-007, phase: opening, axis: strategic, detection_method: engine,  cp_loss_min: 80,  active: true,
+      name: "Bad Opening Deviation",
+      description: "Deviated from a known good continuation with an objectively worse move" }
+
+  # ── OPENING LINE (statistical) ────────────────────────────────────────────
+  - { id: OL-001, phase: opening, axis: opening_line, detection_method: statistical, cp_loss_min: 0, active: true,
+      name: "Consistent Losses After Move N",
+      description: "Loss rate >= 60% in a specific line after a particular move number" }
+
+  - { id: OL-002, phase: opening, axis: opening_line, detection_method: statistical, cp_loss_min: 0, active: true,
+      name: "Repeated Divergence Point",
+      description: "Consistently plays the same inferior move at a known choice point" }
+
+  # ── MIDDLEGAME TACTICAL ───────────────────────────────────────────────────
+  - { id: MT-001, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 200, active: true,
+      name: "Missed Fork",
+      description: "Failed to execute or see a fork opportunity" }
+
+  - { id: MT-002, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Missed Pin",
+      description: "Failed to exploit or missed a pin" }
+
+  - { id: MT-003, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Missed Skewer",
+      description: "Failed to execute or missed a skewer" }
+
+  - { id: MT-004, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 300, active: true,
+      name: "Missed Back-Rank Mate",
+      description: "Failed to see or execute a back-rank mating pattern" }
+
+  - { id: MT-005, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 200, active: true,
+      name: "Missed Discovered Attack",
+      description: "Failed to execute a discovered attack" }
+
+  - { id: MT-006, phase: middlegame, axis: tactical, detection_method: engine, cp_loss_min: 200, active: true,
+      name: "Hung Piece",
+      description: "Left a piece undefended in the middlegame" }
+
+  - { id: MT-007, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Missed Zwischenzug",
+      description: "Failed to play an in-between move before recapturing" }
+
+  - { id: MT-008, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 200, active: true,
+      name: "Bad Sacrifice",
+      description: "Sacrificed material without sufficient compensation" }
+
+  - { id: MT-009, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Missed Defensive Resource",
+      description: "Missed a defensive move that saves the position" }
+
+  - { id: MT-010, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 300, active: true,
+      name: "Missed Winning Combination",
+      description: "A forced winning sequence was available and not played" }
+
+  - { id: MT-011, phase: middlegame, axis: tactical, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Calculation Error",
+      description: "Correct concept, wrong execution due to calculation failure" }
+
+  # ── MIDDLEGAME STRATEGIC ──────────────────────────────────────────────────
+  - { id: MS-001, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 50,  active: true,
+      name: "Passive Piece Placement",
+      description: "Placed a piece on a passive square with no active role" }
+
+  - { id: MS-002, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 80,  active: true,
+      name: "Wrong Plan",
+      description: "Pursued a plan that is objectively wrong for the position" }
+
+  - { id: MS-003, phase: middlegame, axis: strategic, detection_method: hybrid, cp_loss_min: 100, active: true,
+      name: "Ignored Opponent Threat",
+      description: "Failed to address opponent's concrete positional threat" }
+
+  - { id: MS-004, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 50,  active: true,
+      name: "Weak Pawn — Isolated",
+      description: "Created or allowed an isolated pawn without compensation" }
+
+  - { id: MS-005, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 50,  active: true,
+      name: "Weak Pawn — Doubled",
+      description: "Created or allowed doubled pawns without compensation" }
+
+  - { id: MS-006, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 50,  active: true,
+      name: "Weak Pawn — Backward",
+      description: "Created a backward pawn that becomes a chronic weakness" }
+
+  - { id: MS-007, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 80,  active: true,
+      name: "Weak Square Surrendered",
+      description: "Allowed opponent to occupy or control a key weak square" }
+
+  - { id: MS-008, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 80,  active: true,
+      name: "Wrong Piece Trade",
+      description: "Traded a good piece for a bad one or traded into a worse endgame" }
+
+  - { id: MS-009, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 100, active: true,
+      name: "Neglected King Safety",
+      description: "Failed to address king safety while pursuing an attack" }
+
+  - { id: MS-010, phase: middlegame, axis: strategic, detection_method: hybrid, cp_loss_min: 150, active: true,
+      name: "Blunder After Advantage",
+      description: "Threw away a significant advantage" }
+
+  - { id: MS-011, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 80,  active: true,
+      name: "Prophylaxis Failure",
+      description: "Failed to prevent opponent's telegraphed plan" }
+
+  - { id: MS-012, phase: middlegame, axis: strategic, detection_method: ai,    cp_loss_min: 50,  active: true,
+      name: "Premature Piece Exchange",
+      description: "Exchanged a well-placed piece for a poorly-placed one" }
+
+  # ── ENDGAME TACTICAL ──────────────────────────────────────────────────────
+  - { id: ET-001, phase: endgame, axis: tactical, detection_method: hybrid,    cp_loss_min: 200, active: true,
+      name: "Missed Fork in Endgame",
+      description: "Failed to execute a fork in an endgame position" }
+
+  - { id: ET-002, phase: endgame, axis: tactical, detection_method: engine,    cp_loss_min: 300, active: true,
+      name: "Missed Promotion Path",
+      description: "Failed to see or execute a pawn promotion sequence" }
+
+  - { id: ET-003, phase: endgame, axis: tactical, detection_method: engine,    cp_loss_min: 300, active: true,
+      name: "Blunder in Winning Endgame",
+      description: "Dropped a won endgame via tactical oversight" }
+
+  - { id: ET-004, phase: endgame, axis: tactical, detection_method: engine,    cp_loss_min: 500, active: true,
+      name: "Stalemate — Walked Into",
+      description: "Walked into stalemate when winning" }
+
+  - { id: ET-005, phase: endgame, axis: tactical, detection_method: hybrid,    cp_loss_min: 0,   active: true,
+      name: "Stalemate — Missed Escape",
+      description: "Missed a stalemate resource in a losing position" }
+
+  - { id: ET-006, phase: endgame, axis: tactical, detection_method: hybrid,    cp_loss_min: 150, active: true,
+      name: "Missed Skewer in Endgame",
+      description: "Missed a skewer that would win material in the endgame" }
+
+  # ── ENDGAME STRATEGIC ─────────────────────────────────────────────────────
+  - { id: ES-001, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 100, active: true,
+      name: "King Activation Failure",
+      description: "Failed to activate the king in the endgame" }
+
+  - { id: ES-002, phase: endgame, axis: strategic, detection_method: engine,   cp_loss_min: 150, active: true,
+      name: "Wrong King Path",
+      description: "King took an inferior path, losing key squares or tempo" }
+
+  - { id: ES-003, phase: endgame, axis: strategic, detection_method: engine,   cp_loss_min: 200, active: true,
+      name: "Opposition Failure",
+      description: "Failed to maintain or contest opposition in a king-pawn endgame" }
+
+  - { id: ES-004, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 100, active: true,
+      name: "Passed Pawn Mishandled",
+      description: "Advanced or traded a passed pawn incorrectly" }
+
+  - { id: ES-005, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 100, active: true,
+      name: "Passive Rook in Endgame",
+      description: "Placed rook on a passive file or rank in the endgame" }
+
+  - { id: ES-006, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 100, active: true,
+      name: "Rook Not Behind Passed Pawn",
+      description: "Failed to place rook behind the passed pawn (own or opponent's)" }
+
+  - { id: ES-007, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 150, active: true,
+      name: "Poor Conversion Technique",
+      description: "Poor technique when converting a winning endgame" }
+
+  - { id: ES-008, phase: endgame, axis: strategic, detection_method: ai,       cp_loss_min: 150, active: true,
+      name: "Wrong Endgame Transition",
+      description: "Transitioned into a lost or drawn endgame when a win was available" }
+
+  # ── GAME CONDITIONS ────────────────────────────────────────────────────────
+  - { id: GC-001, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Rook vs Pawn Ending",
+      description: "Entered an ending with only kings, rooks, and pawns; track win/loss rate" }
+
+  - { id: GC-002, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Opposite-Color Bishop Ending",
+      description: "Endgame with only kings, pawns, and bishops on opposite colors" }
+
+  - { id: GC-003, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Knight Outpost Allowed",
+      description: "Opponent had a knight on a central/semi-central outpost square for 5+ consecutive moves" }
+
+  - { id: GC-004, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Isolated Queen Pawn",
+      description: "Player entered the middlegame with an isolated pawn on the d-file" }
+
+  - { id: GC-005, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Down Material Entering Endgame",
+      description: "Player was 150cp or more worse when the endgame phase began" }
+
+  - { id: GC-006, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Worse After Opening",
+      description: "Total cp_loss in the opening phase exceeded 100 centipawns" }
+
+  - { id: GC-007, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Exchange Sacrifice Received",
+      description: "Opponent sacrificed a rook for a minor piece" }
+
+  - { id: GC-008, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "King Safety Deficit",
+      description: "Player's king was uncastled past move 15 while opponent had already castled" }
+
+  - { id: GC-009, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Pawn Minority in Endgame",
+      description: "Player had fewer pawns than the opponent when the endgame began" }
+
+  - { id: GC-010, phase: all, axis: game_condition, detection_method: engine, cp_loss_min: 0, active: true,
+      name: "Perpetual King Attack",
+      description: "Player's king was in check 3 or more times in the last 10 moves" }

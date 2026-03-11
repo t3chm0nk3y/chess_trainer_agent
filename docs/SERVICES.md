@@ -90,7 +90,7 @@ Counts non-pawn, non-king pieces (RNBQ) in the FEN:
 
 **Status: Complete**
 
-Three Claude API call patterns for chess analysis.
+Four Claude API call patterns for chess analysis.
 
 ### Functions
 
@@ -99,6 +99,15 @@ Three Claude API call patterns for chess analysis.
   - Input: Game PGN + list of mistake dicts (fen, san, best_move, eval_delta, phase)
   - Output: List of `{ply, annotation}` dicts
   - System prompt: Expert chess coach perspective
+
+- **`classify_mistakes_batch(mistakes)`** -> `list[str | None]`
+  - Batch classification: classifies multiple mistakes in a single Claude call.
+  - Input: List of dicts with keys: fen, san, best_move_uci, eval_delta, phase
+  - Output: List of "tactical" | "strategic" | None, one per input
+  - Synchronous (not async)
+
+- **`classify_mistake_type(fen, san, best_move_uci, eval_delta, phase)`** -> `str | None`
+  - Single-move classification (tactical/strategic). Synchronous.
 
 - **`synthesize_patterns(game_mistakes, existing_patterns)`** -> `list[dict]`
   - Pass 2: Cross-game synthesis. Groups similar mistakes into named patterns.
@@ -115,7 +124,7 @@ Three Claude API call patterns for chess analysis.
 - `CLAUDE_MODEL` env var (default: "claude-sonnet-4-20250514")
 
 ### Notes
-- Uses synchronous `client.messages.create()` (not async)
+- Uses synchronous `client.messages.create()` for classification
 - All responses are expected as JSON; parse failures return empty results
 - The anthropic SDK is initialized at module level as a singleton
 
@@ -176,6 +185,110 @@ Computes per-opening win/loss/draw stats with divergence detection.
 
 ---
 
+## mistake_reporter.py -- Mistake Reporting
+
+**Status: Complete**
+
+Categorized mistake analysis and trend computation.
+
+### Functions
+
+- **`get_mistake_matrix(db, game_id=None)`** -> `dict`
+  - Builds a phase x type matrix: `[phase][type] -> {count, examples}`
+  - Phases: opening, middlegame, endgame
+  - Types: tactical, strategic, unclassified
+  - Returns matrix, phase_totals, type_totals, total_mistakes
+
+- **`get_repeated_mistakes(db, min_frequency=2)`** -> `list[dict]`
+  - Returns unresolved patterns with frequency >= min_frequency, ordered by frequency desc
+  - Includes acknowledgment_status: "new", "acknowledged", or "recurring"
+
+- **`get_mistake_trends(db, period_games=10)`** -> `dict`
+  - Compares accuracy of the most recent `period_games` vs older games
+  - Per-phase breakdown with delta and improving flag
+
+---
+
+## workflow_executor.py -- Workflow Engine
+
+**Status: Complete**
+
+Loads YAML workflow definitions from `workflow-mcp/workflows/`, resolves templates, and executes steps sequentially via a tool registry.
+
+### Key Functions
+
+- **`get_workflows()`** -> `dict[str, dict]` -- Cached YAML definitions
+- **`execute_workflow(db, workflow_name, params)`** -> `dict` -- Execute a full workflow
+- **`resolve_template(template, params, step_results)`** -- Resolve `{{ variable }}` and `{{ step_N.field }}` templates
+
+### Architecture
+- YAML files loaded from `workflow-mcp/workflows/` at startup (cached)
+- `{{ variable }}` syntax for parameter interpolation
+- `{{ step_N.field }}` syntax for referencing previous step results
+- Creates a `WorkflowRun` DB record to persist execution history
+
+### Tool Registry (28 handlers)
+Maps YAML tool names to Python handler functions. Categories:
+- `database.*` -- DB fetch/store operations (fetch_game, fetch_patterns, store_analysis, etc.)
+- `chessagine.analyze_game` -- Delegates to analysis_worker
+- `classifier.*` -- Move classification (passthrough, handled by analysis_worker)
+- `claude.*` -- Claude API calls (annotate, compare, synthesize)
+- `pattern_engine.*` -- Pattern aggregation and diffing
+- `progress.*` -- Accuracy calculation, snapshot creation, trend identification
+- `workflow.execute` -- Sub-workflow composition
+- `lichess_mcp.export_games` -- Lichess API fetch
+- `pgn_parser.parse` -- PGN parsing
+
+---
+
+## chat_service.py -- Chat Agent
+
+**Status: Complete**
+
+Agentic chat loop using Claude's tool-use API with SSE streaming.
+
+### Key Function
+
+- **`chat_stream(messages, db)`** -- Generator yielding SSE event dicts
+
+### Architecture
+- Uses `client.messages.stream()` for real-time text streaming
+- Agentic loop: up to 10 tool-use rounds per request
+- System prompt: Expert chess coach persona
+- Event types: `text_delta`, `tool_call`, `tool_result`, `done`, `error`
+
+---
+
+## chat_tools.py -- Chat Tool Registry
+
+**Status: Complete**
+
+Registers 13 tools that the chat agent can call to query the database.
+
+### Registration Pattern
+```python
+register_tool(name, description, input_schema, handler)
+```
+
+### Registered Tools
+| Tool | Description |
+|------|-------------|
+| `list_games` | List analyzed games with filters (source, opening, color, result) |
+| `get_game_detail` | Full game with all moves and evals |
+| `get_openings_ranked` | Openings ranked by loss percentage |
+| `get_opening_detail` | Drill-down by ECO code |
+| `get_patterns` | Active weakness patterns |
+| `get_pattern_detail` | Pattern with all instance moves |
+| `get_mistake_matrix` | Phase x type mistake breakdown |
+| `get_repeated_mistakes` | Recurring patterns by frequency |
+| `get_accuracy_trends` | Recent vs older accuracy by phase |
+| `get_progress_summary` | Overall stats and pattern counts |
+| `get_sessions` | Play sessions grouped by date |
+| `get_progress_comparison` | Recent vs older game comparison |
+| `get_recent_notifications` | Latest game's pattern matches |
+
+---
+
 ## lichess_api.py -- Lichess Game Import
 
 **Status: Complete**
@@ -202,12 +315,6 @@ Direct HTTP client for the Lichess API using httpx.
 **Status: Stubbed**
 
 Intended abstraction for MCP server communication. All methods raise `NotImplementedError` or return `None`.
-
-### Planned Integrations
-- **ChessAgine MCP** -- Engine analysis with positional themes
-- **Lichess MCP** -- Game import via MCP instead of direct API
-- **Chess.com MCP** -- Game import
-- **Memory MCP** -- Coaching context storage
 
 ### Notes
 - This was the original design before direct Stockfish integration was chosen for Phase 1
