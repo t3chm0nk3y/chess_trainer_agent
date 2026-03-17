@@ -118,7 +118,14 @@ export default function AnalysisPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [game, currentPly]);
 
-  const moves = (game?.moves || []).map((m, i) => ({ ...m, ply: i + 1 }));
+  // Sort moves into game order: by move_number, white before black
+  const moves = (game?.moves || [])
+    .slice()
+    .sort((a, b) => {
+      if (a.move_number !== b.move_number) return a.move_number - b.move_number;
+      return a.color === "white" ? -1 : 1;
+    })
+    .map((m, i) => ({ ...m, ply: i + 1 }));
   const currentFen =
     currentPly > 0 && moves[currentPly - 1]
       ? moves[currentPly - 1].fen_after

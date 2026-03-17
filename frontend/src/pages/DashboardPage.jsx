@@ -1,5 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+const TREND_COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
+  "#3b82f6", "#8b5cf6", "#ec4899", "#f43f5e", "#06b6d4",
+];
 
 function ResultBadge({ result }) {
   const colors = { win: "#4caf50", loss: "#f44336", draw: "#9e9e9e" };
@@ -122,17 +137,55 @@ function AxisBadge({ axis }) {
   );
 }
 
+function formatComponentName(name) {
+  return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState(null);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false));
+    const load = () =>
+      fetch("/api/dashboard")
+        .then((r) => r.json())
+        .then(setData)
+        .finally(() => setLoading(false));
+    const loadHealth = () =>
+      fetch("/api/health/detailed")
+        .then((r) => r.json())
+        .then(setHealth)
+        .catch(() => setHealth(null));
+    load();
+    loadHealth();
+    const interval = setInterval(load, 30000);
+    const healthInterval = setInterval(loadHealth, 30000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(healthInterval);
+    };
   }, []);
+
+  const pattern_trends = data?.pattern_trends || [];
+  const pattern_names = data?.pattern_names || {};
+
+  // Transform trend data: [{month, "Pattern A": 3, "Pattern B": 1}, ...]
+  const trendChartData = useMemo(() => {
+    if (!pattern_trends.length) return { rows: [], keys: [] };
+    const byMonth = {};
+    const patternIds = new Set();
+    for (const t of pattern_trends) {
+      if (!byMonth[t.month]) byMonth[t.month] = { month: t.month };
+      const name = pattern_names[t.pattern_id] || t.pattern_id;
+      byMonth[t.month][name] = t.count;
+      patternIds.add(name);
+    }
+    const rows = Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
+    const keys = [...patternIds];
+    return { rows, keys };
+  }, [pattern_trends, pattern_names]);
 
   if (loading) return <p style={{ color: "var(--text-muted)" }}>Loading...</p>;
   if (!data) return <p>Failed to load dashboard</p>;
@@ -219,8 +272,38 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right column: Top Patterns */}
-        <div className="card" style={{ alignSelf: "start" }}>
+        {/* Right column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, alignSelf: "start" }}>
+          {/* System Health */}
+          {health && (
+            <div className="card">
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "0.95rem" }}>System Health</h3>
+              {Object.entries(health.components).map(([name, info]) => (
+                <div
+                  key={name}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "4px 0",
+                  }}
+                >
+                  <span style={{ color: info.status === "healthy" ? "#4caf50" : "#f44336" }}>
+                    ●
+                  </span>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 500, flex: 1 }}>
+                    {formatComponentName(name)}
+                  </span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    {info.detail}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Top Patterns */}
+          <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Top Recurring Mistakes</h3>
             <button
@@ -284,7 +367,61 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+          </div>
         </div>
+      </div>
+
+      {/* Recurring Mistakes Trend — full width */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ margin: "0 0 12px 0", fontSize: "0.95rem" }}>
+          Recurring Mistakes Trend
+        </h3>
+        {trendChartData.rows.length === 0 ? (
+          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.85rem" }}>
+            No trend data available yet. Patterns will appear here after annotation completes.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={trendChartData.rows}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis
+                dataKey="month"
+                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                stroke="var(--border)"
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: "var(--text-muted)", fontSize: 12 }}
+                stroke="var(--border)"
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "var(--bg-elevated)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  fontSize: "0.8rem",
+                }}
+                labelStyle={{ color: "var(--text-primary)", fontWeight: 600 }}
+                itemStyle={{ padding: "1px 0" }}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: "0.75rem", paddingTop: 8 }}
+              />
+              {trendChartData.keys.map((name, i) => (
+                <Line
+                  key={name}
+                  type="monotone"
+                  dataKey={name}
+                  stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );

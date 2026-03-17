@@ -112,7 +112,9 @@ async def _detect_coverage(db: AsyncSession) -> str:
     )
     conditions = cond_q.scalar_one()
 
-    if annotated == total and conditions == total:
+    ann_pct = annotated / total
+    cond_pct = conditions / total
+    if ann_pct >= 0.95 and cond_pct >= 0.95:
         return "full"
     elif annotated > 0 or conditions > 0:
         return "partial_annotations"

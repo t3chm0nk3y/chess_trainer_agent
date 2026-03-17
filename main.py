@@ -44,6 +44,79 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/health/detailed")
+async def health_detailed():
+    """Per-component health check — no async DB dependency."""
+    import os
+    import sqlite3
+
+    components = {}
+
+    # Database
+    try:
+        db_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./chess_trainer.db")
+        db_path = db_url.split("///")[-1] if "sqlite" in db_url else db_url
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("SELECT COUNT(*) FROM games")
+        game_count = cursor.fetchone()[0]
+        conn.close()
+        components["database"] = {"status": "healthy", "detail": f"{game_count} games"}
+    except Exception as e:
+        components["database"] = {"status": "unhealthy", "detail": str(e)}
+
+    # Stockfish
+    try:
+        sf_path = os.getenv("STOCKFISH_PATH", "bin/stockfish")
+        if os.path.isfile(sf_path) and os.access(sf_path, os.X_OK):
+            components["stockfish"] = {"status": "healthy", "detail": sf_path}
+        else:
+            components["stockfish"] = {"status": "unhealthy", "detail": f"not found at {sf_path}"}
+    except Exception as e:
+        components["stockfish"] = {"status": "unhealthy", "detail": str(e)}
+
+    # Lichess API
+    token = os.getenv("LICHESS_TOKEN", "")
+    if token:
+        components["lichess_api"] = {"status": "healthy", "detail": "token configured"}
+    else:
+        components["lichess_api"] = {"status": "unhealthy", "detail": "LICHESS_TOKEN not set"}
+
+    # Claude API
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if api_key:
+        components["claude_api"] = {"status": "healthy", "detail": "key configured"}
+    else:
+        components["claude_api"] = {"status": "unhealthy", "detail": "ANTHROPIC_API_KEY not set"}
+
+    # Pattern Registry
+    try:
+        import yaml
+
+        reg_path = os.getenv("REGISTRY_PATH", "registry/patterns.yaml")
+        if os.path.isfile(reg_path):
+            with open(reg_path) as f:
+                registry = yaml.safe_load(f)
+            version = registry.get("registry_version", "?")
+            count = len(registry.get("patterns", []))
+            components["pattern_registry"] = {
+                "status": "healthy",
+                "detail": f"v{version}, {count} patterns",
+            }
+        else:
+            components["pattern_registry"] = {
+                "status": "unhealthy",
+                "detail": f"not found at {reg_path}",
+            }
+    except Exception as e:
+        components["pattern_registry"] = {"status": "unhealthy", "detail": str(e)}
+
+    all_healthy = all(c["status"] == "healthy" for c in components.values())
+    return {
+        "overall": "healthy" if all_healthy else "degraded",
+        "components": components,
+    }
+
+
 @app.get("/api/config")
 async def get_config():
     import config
@@ -110,7 +183,7 @@ async def dashboard(db=Depends(get_db)):
     from sqlalchemy import func
     from sqlalchemy import select as sa_select
 
-    from models import Game, OpeningStats, Pattern
+    from models import Game, MovePatternMatch, OpeningStats, Pattern
 
     # Total games
     total_q = await db.execute(sa_select(func.count(Game.id)))
@@ -176,6 +249,44 @@ async def dashboard(db=Depends(get_db)):
     openings_q = await db.execute(sa_select(func.count(OpeningStats.id)))
     openings_computed = openings_q.scalar_one()
 
+    # Top 10 pattern trend data (monthly occurrences)
+    top_pattern_ids = [p.registry_pattern_id for p in patterns_q.scalars().all()]
+    # Re-query since scalars were consumed
+    patterns_q2 = await db.execute(
+        sa_select(Pattern)
+        .where(Pattern.axis != "game_condition")
+        .order_by(Pattern.frequency.desc())
+        .limit(10)
+    )
+    top_pattern_ids = [p.registry_pattern_id for p in patterns_q2.scalars().all()]
+
+    pattern_trends = []
+    if top_pattern_ids:
+        trend_q = await db.execute(
+            sa_select(
+                MovePatternMatch.registry_pattern_id,
+                func.strftime("%Y-%m", Game.played_at).label("month"),
+                func.count(MovePatternMatch.id).label("count"),
+            )
+            .join(Game, MovePatternMatch.game_id == Game.id)
+            .where(MovePatternMatch.registry_pattern_id.in_(top_pattern_ids))
+            .group_by(MovePatternMatch.registry_pattern_id, "month")
+            .order_by("month")
+        )
+        for row in trend_q.all():
+            pattern_trends.append({
+                "pattern_id": row[0],
+                "month": row[1],
+                "count": row[2],
+            })
+
+    # Build pattern name lookup
+    pattern_name_q = await db.execute(
+        sa_select(Pattern.registry_pattern_id, Pattern.name)
+        .where(Pattern.registry_pattern_id.in_(top_pattern_ids))
+    )
+    pattern_names = {r[0]: r[1] for r in pattern_name_q.all()}
+
     return {
         "total_games": total,
         "pipeline": {
@@ -186,4 +297,6 @@ async def dashboard(db=Depends(get_db)):
         "recent_games": recent_games,
         "top_patterns": top_patterns,
         "openings_computed": openings_computed,
+        "pattern_trends": pattern_trends,
+        "pattern_names": pattern_names,
     }
